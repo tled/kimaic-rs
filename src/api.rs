@@ -1,7 +1,20 @@
+use std::fs::File;
 use reqwest::Error;
 use serde::Deserialize;
 use chrono::{DateTime, Local, Duration, Datelike};
-use crate::config::Config;
+
+#[derive(Deserialize, Debug)]
+pub struct KimaiApi {
+    url: String,
+    xauth: XAuth,
+    max_pages: Option<u32>
+}
+
+#[derive(Deserialize, Debug)]
+struct XAuth {
+    pub user: String,
+    pub token: String
+}
 
 #[derive(Deserialize, Debug)]
 pub struct Timesheet {
@@ -10,50 +23,52 @@ pub struct Timesheet {
     end: Option<DateTime<Local>>,
 }
 
-fn get(config: &Config, path: &str, parameters: Option<&str>) -> Result<reqwest::blocking::Response, Error> {
-    let url = match parameters {
-        Some(p) => format!("{}{}?{}", config.url, path, p),
-        None => format!("{}{}", config.url, path)
-    };
-    let client = reqwest::blocking::Client::new();
-    let response = client
-        .get(url)
-        .header("X-AUTH-USER", &config.auth.user)
-        .header("X-AUTH-TOKEN", &config.auth.token)
-        .send()?;
-    Ok(response)
-}
+impl KimaiApi {
+    pub fn from_file(fhandle: File) -> KimaiApi {
+        serde_yaml::from_reader(fhandle).expect("Error loading config file.")
+    }
 
-fn get_entries(config: &Config) -> Result<Vec<Timesheet>, Error>  {
-    let mut ts: Vec<Timesheet> = Vec::new();
-    for i in 1..=10 {
-        let response = get(config, "/api/timesheets", Some(&format!("page={}", i)))?;
-        match response.status() {
-            reqwest::StatusCode::NOT_FOUND => break,
-            reqwest::StatusCode::OK => {
-                let mut _ts: Vec<Timesheet> = response.json()?;
-                ts.append(&mut _ts);
+    fn get(&self, path: &str, parameters: Option<&str>) -> Result<reqwest::blocking::Response, Error> {
+        let url = match parameters {
+            Some(p) => format!("{}{}?{}", self.url, path, p),
+            None => format!("{}{}", self.url, path)
+        };
+        let client = reqwest::blocking::Client::new();
+        let response = client
+            .get(url)
+            .header("X-AUTH-USER", &self.xauth.user)
+            .header("X-AUTH-TOKEN", &self.xauth.token)
+            .send()?;
+        Ok(response)
+    }
+
+    fn get_entries(&self) -> Result<Vec<Timesheet>, Error>  {
+        let mut ts: Vec<Timesheet> = Vec::new();
+        for i in 1..=10 {
+            let response = self.get("/api/timesheets", Some(&format!("page={}", i)))?;
+            match response.status() {
+                reqwest::StatusCode::NOT_FOUND => break,
+                reqwest::StatusCode::OK => {
+                    let mut _ts: Vec<Timesheet> = response.json()?;
+                    ts.append(&mut _ts);
+                }
+                status => panic!("Unknown HTTP StatusCode: {}", status),
             }
-            status => panic!("Unknown HTTP StatusCode: {}", status),
         }
+        Ok(ts)
     }
-    Ok(ts)
-}
 
-fn summary_sum(ts: Vec<Timesheet>, t: DateTime<Local>) -> Duration {
-    let mut duration: Duration = Duration::minutes(0);
-    for entry in ts.iter() {
-        if entry.begin.iso_week().week() == t.iso_week().week() {
-            duration = duration + match entry.end {
-                Some(end) => end - entry.begin,
-                None => Local::now() - entry.begin
-            };
+    pub fn weekly(&self, t: DateTime<Local>) -> Duration {
+        let mut duration: Duration = Duration::minutes(0);
+        let ts: Vec<Timesheet> = self.get_entries().expect("Error retrieving timesheet entries");
+        for entry in ts.iter() {
+            if entry.begin.iso_week().week() == t.iso_week().week() {
+                duration = duration + match entry.end {
+                    Some(end) => end - entry.begin,
+                    None => Local::now() - entry.begin
+                };
+            }
         }
+        duration
     }
-    duration
-}
-
-pub fn summary(config: &Config, t: DateTime<Local>) -> Duration {
-    let ts: Vec<Timesheet> = get_entries(config).expect("Error retrieving timesheet entries");
-    summary_sum(ts, t)
 }
