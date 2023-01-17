@@ -1,0 +1,4 @@
+url: http://localhost:5000
+auth:
+  user: foo.bar
+  token: toomanysecrets
