@@ -11,4 +11,5 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 reqwest = { version = "0.11", features = ["json", "blocking"] }
 chrono = { version = "0.4", features = ["serde"] }
-chrono-tz = "0.5"
+chrono-tz = "0.8"
+now = "0.1"

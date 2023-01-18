@@ -1,7 +1,7 @@
 use std::fs::File;
 use reqwest::Error;
 use serde::Deserialize;
-use chrono::{DateTime, Local, Duration, Datelike};
+use chrono::{DateTime, Local, Duration};
 
 #[derive(Deserialize, Debug)]
 pub struct KimaiApi {
@@ -58,11 +58,11 @@ impl KimaiApi {
         Ok(ts)
     }
 
-    pub fn weekly(&self, t: DateTime<Local>) -> Duration {
+    pub fn summary(&self, start: DateTime<Local>, end: DateTime<Local>) -> Duration {
         let mut duration: Duration = Duration::minutes(0);
         let ts: Vec<Timesheet> = self.get_entries().expect("Error retrieving timesheet entries");
         for entry in ts.iter() {
-            if entry.begin.iso_week().week() == t.iso_week().week() {
+            if entry.begin > start && entry.begin < end {
                 duration = duration + match entry.end {
                     Some(end) => end - entry.begin,
                     None => Local::now() - entry.begin
