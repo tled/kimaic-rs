@@ -13,3 +13,4 @@ reqwest = { version = "0.11", features = ["json", "blocking"] }
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.8"
 now = "0.1"
+clap = { version = "4",  features = ["derive"] }

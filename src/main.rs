@@ -1,30 +1,72 @@
 use std::fs::File;
-use chrono::Datelike;
+use chrono::{Datelike, DateTime, Local};
 use now::{DateTimeNow, WeekStartDay};
+use clap::{Parser, Subcommand};
 use crate::api::KimaiApi;
 mod api;
 
-fn summary(kimai_api: KimaiApi, offset: i64) {
-    let now = chrono::Local::now() - chrono::Duration::weeks(offset);
+#[derive(Parser)]
+#[command(about = "kimaic-rs - prints time entries from kimai")]
+#[command(author, version, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    Week {
+        offset: Option<i64>,
+    },
+    Month { },
+}
+
+fn today(kimai_api: &KimaiApi) {
+    let now = chrono::Local::now();
+    let sod = now.beginning_of_day();
+    let eod = now.end_of_day();
+    let daily = kimai_api.summary(sod, eod);
+    println!("Today:\t{}h", daily.num_minutes() as f64 / 60.0);
+}
+
+fn weekly(kimai_api: &KimaiApi, now: DateTime<Local>) {
     let sow = now.beginning_of_week_with_start_day(&WeekStartDay::Monday);
     let eow = now.end_of_week();
     let weekly = kimai_api.summary(sow, eow);
-    if offset == 0 {
-        let sod = now.beginning_of_day();
-        let eod = now.end_of_day();
-        let daily = kimai_api.summary(sod, eod);
-        println!("Today: {}", daily.num_minutes() as f64 / 60.0);
-    }
-
-    println!("Week #{} [{} - {}]",
+    print!("Week #{:2} [{} - {}]:\t",
              sow.iso_week().week(), sow.format("%Y-%m-%d"), eow.format("%Y-%m-%d"),
     );
-    println!("{}:{}", weekly.num_hours(), weekly.num_minutes() % 60);
-    println!("{:.2}h", weekly.num_minutes() as f64 / 60.0)
+    print!("{}:{} ", weekly.num_hours(), weekly.num_minutes() % 60);
+    println!("({:.2}h)", weekly.num_minutes() as f64 / 60.0);
+}
+
+fn load_kimai_api() -> KimaiApi {
+    let f = File::open("config.yaml").expect("Could not open config file.");
+    KimaiApi::from_file(f)
 }
 
 fn main() {
-    let f = File::open("config.yaml").expect("Could not open config file.");
-    let api = KimaiApi::from_file(f);
-    summary(api, 0)
+    let cli = Cli::parse();
+    let api = load_kimai_api();
+    match &cli.command {
+        Some(Commands::Week { offset }) => {
+            let offset = match offset {
+                Some(offset) => *offset,
+                None => 0
+            };
+            weekly(&api, chrono::Local::now() - chrono::Duration::weeks(offset));
+            if offset == 0 {
+                today(&api);
+            }
+        }
+        Some(Commands::Month { }) => {
+            let now = chrono::Local::now();
+            let mut cur = now.beginning_of_month();
+            while cur < now {
+                weekly(&api, cur);
+                cur = cur + chrono::Duration::weeks(1);
+            }
+        }
+        None => {}
+    }
 }
