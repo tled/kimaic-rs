@@ -21,7 +21,7 @@ enum Commands {
     Month { },
 }
 
-fn today(kimai_api: &KimaiApi) {
+fn today(kimai_api: &mut KimaiApi) {
     let now = chrono::Local::now();
     let sod = now.beginning_of_day();
     let eod = now.end_of_day();
@@ -29,7 +29,7 @@ fn today(kimai_api: &KimaiApi) {
     println!("Today:\t{}h", daily.num_minutes() as f64 / 60.0);
 }
 
-fn weekly(kimai_api: &KimaiApi, now: DateTime<Local>) {
+fn weekly(kimai_api: &mut KimaiApi, now: DateTime<Local>) {
     let sow = now.beginning_of_week_with_start_day(&WeekStartDay::Monday);
     let eow = now.end_of_week();
     let weekly = kimai_api.summary(sow, eow);
@@ -47,24 +47,24 @@ fn load_kimai_api() -> KimaiApi {
 
 fn main() {
     let cli = Cli::parse();
-    let api = load_kimai_api();
+    let mut api = load_kimai_api();
     match &cli.command {
         Some(Commands::Week { offset }) => {
             let offset = match offset {
                 Some(offset) => *offset,
                 None => 0
             };
-            weekly(&api, chrono::Local::now() - chrono::Duration::weeks(offset));
+            weekly(&mut api, chrono::Local::now() - chrono::Duration::weeks(offset));
             if offset == 0 {
-                today(&api);
+                today(&mut api);
             }
         }
         Some(Commands::Month { }) => {
             let now = chrono::Local::now();
             let mut cur = now.beginning_of_month();
             while cur < now {
-                weekly(&api, cur);
-                cur = cur + chrono::Duration::weeks(1);
+                weekly(&mut api, cur);
+                cur = cur.beginning_of_week() + chrono::Duration::weeks(1);
             }
         }
         None => {}
